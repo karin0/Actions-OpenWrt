@@ -10,20 +10,11 @@
 
 name: Build immortalwrt Redmi-AX6 plus
 
-on:
-  repository_dispatch:
-  workflow_dispatch:
-    inputs:
-      ssh:
-        description: 'SSH connection to Actions'
-        required: false
-        default: 'false'
-  schedule:
-    - cron: 37 3 * * 4
+on: push
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
-  REPO_BRANCH: openwrt-23.05
+  REPO_BRANCH: v23.05.1
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: config/AX6_5.15(ImmortalWrt).config
   DIY_P1_SH: diy-part1.sh
@@ -45,7 +36,7 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@main
-      
+
     - name: Check server configuration
       run: |
         echo "警告⚠"
@@ -84,7 +75,7 @@ jobs:
         sudo chown $USER:$GROUPS /workdir
         echo "status=success" >> ${GITHUB_OUTPUT}
         df -Th
-        
+
     - name: Clone source code
       working-directory: /workdir
       run: |
@@ -98,7 +89,7 @@ jobs:
         echo "DATE=$(date "+%Y-%m-%d %H:%M:%S")" >> $GITHUB_ENV
         echo "DATE1=$(date "+%Y-%m-%d")" >> $GITHUB_ENV
         echo "DATE2=$(date "+%Y%m%d")" >> $GITHUB_ENV
- 
+
     - name: Load custom feeds
       run: |
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
@@ -121,13 +112,6 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P2_SH
         #$GITHUB_WORKSPACE/$DIY_P3_SH
 
-    - name: SSH connection to Actions
-      uses: P3TERX/ssh2actions@v1.0.0
-      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
-      env:
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-
     - name: Download package
       id: package
       run: |
@@ -148,7 +132,7 @@ jobs:
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
-        
+
     - name: Clean up server space
       if: steps.compile.outputs.status == 'success' && !cancelled()
       run: |
@@ -181,52 +165,3 @@ jobs:
       with:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
-
-    - name: Create release
-      id: release
-      uses: ncipollo/release-action@v1
-      with:
-        name: ${{ env.DATE }} OpenWrt for ${{ env.PRODUCT_NAME }}
-        allowUpdates: true
-        tag: ${{ env.DATE2 }}_${{ env.FILE_NAME }}
-        commit: main
-        token: ${{ secrets.RELEASES_TOKEN }}
-        body: |
-         #### Redmi-AX6（合并分区） immortalwrt-Openwrt 固件配置：
-            - IP:192.168.123.1
-            - WEB登陆账户：root
-            - 密码：password
-            - 固件源码：https://github.com/immortalwrt/immortalwrt
-            - 固件内核版本：5.15
-         #### 源码最近提交信息:
-            - ${{ env.useVersionInfo }}
-        artifacts: ${{ env.FIRMWARE }}/*
-
-    - name: Delete older workflow runs and artifacts
-      uses: Mattraks/delete-workflow-runs@main
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        repository: ${{ github.repository }}
-        delete_workflow_pattern: Build immortalwrt Redmi-AX6 plus
-        retain_days: 30
-        keep_minimum_runs: 10
-
-    - name: Delete older releases
-      uses: codesnas/delete-older-releases@main
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      with:
-        #repo:
-        keep_latest: 5
-        delete_tag_pattern: Redmi-AX6(immortalwrt-plus)
-        delete_tags: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    #- name: Telegram notification
-    #  run: |
-    #    MSG="
-    #    编译时间：${{ env.DATE }}
-    #    OpenWrt 更新信息：${{ env.useVersionInfo }}
-    #    ${{ env.PRODUCT_NAME }} 编译完成
-    #    "
-    #    curl "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" -d "chat_id=${{ secrets.TELEGRAM_TO }}&text=${MSG}"
